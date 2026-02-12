@@ -9,7 +9,7 @@ Weekly 5-a-side soccer organizer with **persistent player ratings**, balanced te
 - **Form Adjustments**: Admin can optionally tweak player stats per game (-1/0/+1 per attribute).
 - **Unlock Teams**: Admin can now unlock locked teams to regenerate.
 
-## Setup
+## Setup.
 
 ### 1. Supabase
 - Create a project at [supabase.com](https://supabase.com)

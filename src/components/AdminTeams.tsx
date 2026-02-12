@@ -19,7 +19,7 @@ export function AdminTeams({ gameId, teams, stats, profiles }: Props) {
   function run(fn: () => Promise<void>, successMsg: string) {
     startTransition(async () => {
       try { await fn(); setMessage(successMsg); setTimeout(() => setMessage(''), 4000); }
-      catch (err: any) { setMessage('Error: ' + err.message); }
+      catch (err: any) { setMessage('Error: ' + (err.message || err.digest || JSON.stringify(err))); }
     });
   }
 

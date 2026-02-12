@@ -9,103 +9,109 @@ import type { Game, Rsvp, PlayerSkillProfile, Teams, FormAdjustment } from '@/ty
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
-  const supabase = await createServerSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  if (profile?.role !== 'admin') {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="card text-center">
-          <span className="text-4xl">🔒</span>
-          <h2 className="mt-3 font-display text-xl font-bold">Admin Only</h2>
+  try {
+    const supabase = await createServerSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) redirect('/login');
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+    if (profile?.role !== 'admin') {
+      return (
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="card text-center">
+            <span className="text-4xl">🔒</span>
+            <h2 className="mt-3 font-display text-xl font-bold">Admin Only</h2>
+          </div>
         </div>
+      );
+    }
+
+    const service = await createServiceSupabase();
+    const { data: games } = await service.from('games').select('*').order('starts_at', { ascending: false }).limit(5);
+    const currentGame: Game | null = games?.[0] ?? null;
+
+    let rsvps: any[] = [];
+    let teams: Teams | null = null;
+    let formAdjs: FormAdjustment[] = [];
+    const allProfiles: Record<string, string> = {};
+
+    const { data: profs } = await service.from('profiles').select('id, name');
+    if (profs) profs.forEach((p: any) => { allProfiles[p.id] = p.name; });
+
+    if (currentGame) {
+      const { data: rsvpData } = await service.from('rsvps').select('*, profiles(id, name)')
+        .eq('game_id', currentGame.id).neq('status', 'cancelled').order('created_at', { ascending: true });
+      rsvps = rsvpData ?? [];
+
+      const { data: teamData } = await service.from('teams').select('*').eq('game_id', currentGame.id).maybeSingle();
+      teams = teamData;
+
+      if (currentGame.use_form_adjustments) {
+        const { data: adjData } = await service.from('form_adjustments').select('*').eq('game_id', currentGame.id);
+        formAdjs = adjData ?? [];
+      }
+    }
+
+    const { data: statsData } = await service.from('player_skill_profile').select('*').order('strength', { ascending: false });
+    const stats: PlayerSkillProfile[] = statsData ?? [];
+
+    const confirmed = rsvps.filter((r: any) => r.status === 'confirmed');
+    const waitlist = rsvps.filter((r: any) => r.status === 'waitlist');
+
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="font-display text-2xl font-bold">Admin Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-400">Manage games, stats, and teams.</p>
+        </div>
+
+        <AdminGameForm game={currentGame} />
+
+        {currentGame && (
+          <div className="card">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
+              RSVPs — {confirmed.length} confirmed, {waitlist.length} waitlisted
+            </h2>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <p className="text-xs text-gray-500 mb-1.5">Confirmed</p>
+                {confirmed.length === 0 && <p className="text-sm text-gray-600">None</p>}
+                {confirmed.map((r: any, i: number) => (
+                  <p key={r.user_id} className="text-sm text-gray-300">{i + 1}. {r.profiles?.name ?? 'Unknown'}</p>
+                ))}
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1.5">Waitlist</p>
+                {waitlist.length === 0 ? <p className="text-sm text-gray-600">Empty</p> :
+                  waitlist.map((r: any, i: number) => (
+                    <p key={r.user_id} className="text-sm text-gray-300">{i + 1}. {r.profiles?.name ?? 'Unknown'}</p>
+                  ))
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
+        <AdminStats stats={stats} profiles={allProfiles} />
+
+        {currentGame && currentGame.use_form_adjustments && (
+          <AdminFormAdjustments
+            gameId={currentGame.id}
+            confirmed={confirmed.map((r: any) => ({ id: r.user_id, name: r.profiles?.name ?? 'Unknown' }))}
+            existing={formAdjs}
+          />
+        )}
+
+        {currentGame && (
+          <AdminTeams gameId={currentGame.id} teams={teams} stats={stats} profiles={allProfiles} />
+        )}
+      </div>
+    );
+  } catch (err: any) {
+    return (
+      <div className="card mt-10 text-center">
+        <h2 className="text-red-400 font-bold text-lg mb-2">Admin Page Error</h2>
+        <p className="text-sm text-gray-400 font-mono break-all">{err.message || JSON.stringify(err)}</p>
       </div>
     );
   }
-
-  const service = await createServiceSupabase();
-  const { data: games } = await service.from('games').select('*').order('starts_at', { ascending: false }).limit(5);
-  const currentGame: Game | null = games?.[0] ?? null;
-
-  let rsvps: Rsvp[] = [];
-  let stats: PlayerSkillProfile[] = [];
-  let teams: Teams | null = null;
-  let formAdjs: FormAdjustment[] = [];
-  const allProfiles: Record<string, string> = {};
-
-  // Get all profiles
-  const { data: profs } = await service.from('profiles').select('id, name');
-  if (profs) profs.forEach((p: any) => { allProfiles[p.id] = p.name; });
-
-  if (currentGame) {
-    const { data: rsvpData } = await service.from('rsvps').select('*, profiles(id, name)')
-      .eq('game_id', currentGame.id).neq('status', 'cancelled').order('created_at', { ascending: true });
-    rsvps = rsvpData ?? [];
-
-    const { data: teamData } = await service.from('teams').select('*').eq('game_id', currentGame.id).single();
-    teams = teamData;
-
-    if (currentGame.use_form_adjustments) {
-      const { data: adjData } = await service.from('form_adjustments').select('*').eq('game_id', currentGame.id);
-      formAdjs = adjData ?? [];
-    }
-  }
-
-  // Get ALL skill profiles (not game-specific)
-  const { data: statsData } = await service.from('player_skill_profile').select('*').order('strength', { ascending: false });
-  stats = statsData ?? [];
-
-  const confirmed = rsvps.filter((r) => r.status === 'confirmed');
-  const waitlist = rsvps.filter((r) => r.status === 'waitlist');
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-2xl font-bold">Admin Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-400">Manage games, stats, and teams.</p>
-      </div>
-
-      <AdminGameForm game={currentGame} />
-
-      {currentGame && (
-        <div className="card">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
-            RSVPs — {confirmed.length} confirmed, {waitlist.length} waitlisted
-          </h2>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <p className="text-xs text-gray-500 mb-1.5">Confirmed</p>
-              {confirmed.map((r: any, i) => (
-                <p key={r.user_id} className="text-sm text-gray-300">{i + 1}. {r.profiles?.name ?? 'Unknown'}</p>
-              ))}
-              {confirmed.length === 0 && <p className="text-sm text-gray-600">None</p>}
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1.5">Waitlist</p>
-              {waitlist.length === 0 ? <p className="text-sm text-gray-600">Empty</p> :
-                waitlist.map((r: any, i) => (
-                  <p key={r.user_id} className="text-sm text-gray-300">{i + 1}. {r.profiles?.name ?? 'Unknown'}</p>
-                ))
-              }
-            </div>
-          </div>
-        </div>
-      )}
-
-      <AdminStats stats={stats} profiles={allProfiles} />
-
-      {currentGame && currentGame.use_form_adjustments && (
-        <AdminFormAdjustments
-          gameId={currentGame.id}
-          confirmed={confirmed.map((r: any) => ({ id: r.user_id, name: r.profiles?.name ?? 'Unknown' }))}
-          existing={formAdjs}
-        />
-      )}
-
-      {currentGame && (
-        <AdminTeams gameId={currentGame.id} teams={teams} stats={stats} profiles={allProfiles} />
-      )}
-    </div>
-  );
 }

@@ -96,7 +96,6 @@ export async function toggleRsvp(formData: FormData) {
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('game_id', parsed.game_id).eq('user_id', user.id);
     if (error) throw new Error(error.message);
-    // Auto-promote
     const service = await createServiceSupabase();
     const { data: waitlisted } = await service.from('rsvps')
       .select('user_id').eq('game_id', parsed.game_id).eq('status', 'waitlist')
@@ -141,21 +140,17 @@ export async function computeSkillProfiles() {
   await requireAdmin();
   const service = await createServiceSupabase();
 
-  // Get all players who have been rated
   const { data: allRatings } = await service.from('player_ratings').select('*');
   if (!allRatings || allRatings.length === 0) throw new Error('No ratings found');
 
-  // Group by ratee
   const byRatee = new Map<string, any[]>();
   allRatings.forEach((r: any) => {
     if (!byRatee.has(r.ratee_id)) byRatee.set(r.ratee_id, []);
     byRatee.get(r.ratee_id)!.push(r);
   });
 
-  // Delete old profiles
   await service.from('player_skill_profile').delete().neq('user_id', '00000000-0000-0000-0000-000000000000');
 
-  // Compute for each rated player
   const attrs = ['tc', 'pd', 'da', 'en', 'fi', 'iq'] as const;
 
   for (const [userId, ratings] of Array.from(byRatee.entries())) {
@@ -223,11 +218,11 @@ export async function saveFormAdjustment(formData: FormData) {
 
 // ---------- ADMIN: GENERATE TEAMS ----------
 
-export async function generateTeamsAction(gameId: string) {
+export async function generateTeamsAction(gameId: string): Promise<{ error: string | null }> {
   await requireAdmin();
   const service = await createServiceSupabase();
 
-  const { data: existingTeam } = await service.from('teams').select('locked').eq('game_id', gameId).single();
+  const { data: existingTeam } = await service.from('teams').select('locked').eq('game_id', gameId).maybeSingle();
   if (existingTeam?.locked) return { error: 'Teams are locked. Unlock first.' };
 
   const { data: game } = await service.from('games').select('use_form_adjustments').eq('id', gameId).single();
@@ -238,10 +233,10 @@ export async function generateTeamsAction(gameId: string) {
 
   const playerIds = rsvps.map((r: any) => r.user_id);
 
-  const { data: profiles } = await service.from('player_skill_profile')
+  const { data: skillProfiles } = await service.from('player_skill_profile')
     .select('*').in('user_id', playerIds);
   const profileMap = new Map<string, any>();
-  (profiles ?? []).forEach((p: any) => profileMap.set(p.user_id, p));
+  (skillProfiles ?? []).forEach((p: any) => profileMap.set(p.user_id, p));
 
   let adjMap = new Map<string, any>();
   if (game?.use_form_adjustments) {
@@ -292,44 +287,9 @@ export async function generateTeamsAction(gameId: string) {
     updated_at: new Date().toISOString(),
   }, { onConflict: 'game_id' });
   if (error) return { error: error.message };
+
   revalidatePath('/admin');
   return { error: null };
-}
-  // Build final player stats
-  const DEFAULT_BASE = 3.0;
-  const players = playerIds.map((uid: string) => {
-    const sp = profileMap.get(uid);
-    const base: any = {};
-    ATTRIBUTES.forEach((attr) => {
-      base[attr] = sp ? Number(sp[attr]) : DEFAULT_BASE;
-    });
-
-    // Apply form adjustments
-    if (game?.use_form_adjustments && adjMap.has(uid)) {
-      const adj = adjMap.get(uid)!;
-      ATTRIBUTES.forEach((attr) => {
-        base[attr] = clamp(base[attr] + adj[attr], 1, 5);
-      });
-    }
-
-    const strength = 0.20 * base.tc + 0.20 * base.pd + 0.20 * base.da
-      + 0.15 * base.en + 0.15 * base.fi + 0.10 * base.iq;
-
-    return { user_id: uid, ...base, strength };
-  });
-
-  const result = generateTeams(players);
-  const { error } = await service.from('teams').upsert({
-    game_id: gameId,
-    team_a: result.team_a,
-    team_b: result.team_b,
-    cost: result.cost,
-    published: false,
-    locked: false,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'game_id' });
-  if (error) throw new Error(error.message);
-  revalidatePath('/admin');
 }
 
 // ---------- ADMIN: LOCK / UNLOCK / PUBLISH ----------

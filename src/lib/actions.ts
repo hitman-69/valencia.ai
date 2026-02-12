@@ -228,44 +228,73 @@ export async function generateTeamsAction(gameId: string) {
   const service = await createServiceSupabase();
 
   const { data: existingTeam } = await service.from('teams').select('locked').eq('game_id', gameId).single();
-  if (existingTeam?.locked) throw new Error('Teams are locked. Unlock first.');
+  if (existingTeam?.locked) return { error: 'Teams are locked. Unlock first.' };
 
-  // Get game info
   const { data: game } = await service.from('games').select('use_form_adjustments').eq('id', gameId).single();
 
-  // Get 10 confirmed players
   const { data: rsvps } = await service.from('rsvps')
     .select('user_id').eq('game_id', gameId).eq('status', 'confirmed');
-  if (!rsvps || rsvps.length !== 10) throw new Error(`Need 10 confirmed, found ${rsvps?.length ?? 0}`);
+  if (!rsvps || rsvps.length !== 10) return { error: 'Need 10 confirmed players, found ' + (rsvps?.length ?? 0) };
+
   const playerIds = rsvps.map((r: any) => r.user_id);
 
-  // Get skill profiles
   const { data: profiles } = await service.from('player_skill_profile')
     .select('*').in('user_id', playerIds);
-  const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
+  const profileMap = new Map<string, any>();
+  (profiles ?? []).forEach((p: any) => profileMap.set(p.user_id, p));
 
-  // Get form adjustments if enabled
   let adjMap = new Map<string, any>();
   if (game?.use_form_adjustments) {
     const { data: adjs } = await service.from('form_adjustments')
       .select('*').eq('game_id', gameId).in('user_id', playerIds);
     if (adjs) {
-      // Group by user_id and average if multiple
       const grouped = new Map<string, any[]>();
       adjs.forEach((a: any) => {
         if (!grouped.has(a.user_id)) grouped.set(a.user_id, []);
         grouped.get(a.user_id)!.push(a);
       });
-      grouped.forEach((entries, uid) => {
+      for (const [uid, entries] of Array.from(grouped.entries())) {
         const avg: any = { tc: 0, pd: 0, da: 0, en: 0, fi: 0, iq: 0 };
         ATTRIBUTES.forEach((attr) => {
           avg[attr] = entries.reduce((s: number, e: any) => s + e[attr], 0) / entries.length;
         });
         adjMap.set(uid, avg);
-      });
+      }
     }
   }
 
+  const DEFAULT_BASE = 3.0;
+  const players = playerIds.map((uid: string) => {
+    const sp = profileMap.get(uid);
+    const base: any = {};
+    ATTRIBUTES.forEach((attr) => {
+      base[attr] = sp ? Number(sp[attr]) : DEFAULT_BASE;
+    });
+    if (game?.use_form_adjustments && adjMap.has(uid)) {
+      const adj = adjMap.get(uid)!;
+      ATTRIBUTES.forEach((attr) => {
+        base[attr] = clamp(base[attr] + adj[attr], 1, 5);
+      });
+    }
+    const strength = 0.20 * base.tc + 0.20 * base.pd + 0.20 * base.da
+      + 0.15 * base.en + 0.15 * base.fi + 0.10 * base.iq;
+    return { user_id: uid, ...base, strength };
+  });
+
+  const result = generateTeams(players);
+  const { error } = await service.from('teams').upsert({
+    game_id: gameId,
+    team_a: result.team_a,
+    team_b: result.team_b,
+    cost: result.cost,
+    published: false,
+    locked: false,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'game_id' });
+  if (error) return { error: error.message };
+  revalidatePath('/admin');
+  return { error: null };
+}
   // Build final player stats
   const DEFAULT_BASE = 3.0;
   const players = playerIds.map((uid: string) => {

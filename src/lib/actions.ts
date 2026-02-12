@@ -158,7 +158,7 @@ export async function computeSkillProfiles() {
   // Compute for each rated player
   const attrs = ['tc', 'pd', 'da', 'en', 'fi', 'iq'] as const;
 
-  for (const [userId, ratings] of byRatee) {
+  for (const [userId, ratings] of Array.from(byRatee.entries())) {
     const result: any = { user_id: userId, updated_at: new Date().toISOString() };
     let nVotes = 0;
 

@@ -35,7 +35,13 @@ export function AdminTeams({ gameId, teams, stats, profiles }: Props) {
     <div className="card">
       <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">Teams</h2>
       <div className="flex flex-wrap gap-2 mb-4">
-        <button onClick={() => run(() => generateTeamsAction(gameId), 'Teams generated!')}
+      <button onClick={() => startTransition(async () => {
+          try {
+            const res = await generateTeamsAction(gameId);
+            if (res?.error) setMessage('Error: ' + res.error);
+            else { setMessage('Teams generated!'); setTimeout(() => setMessage(''), 4000); }
+          } catch (err: any) { setMessage('Error: ' + (err.message || 'Unknown error')); }
+        })}
           disabled={isPending || (teams?.locked ?? false)} className="btn-primary text-sm">
           {isPending ? 'Working...' : teams ? 'Regenerate' : 'Generate Teams'}
         </button>

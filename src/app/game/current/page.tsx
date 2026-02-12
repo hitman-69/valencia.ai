@@ -1,6 +1,6 @@
 import { createServerSupabase } from '@/lib/supabase/server';
 import { toggleRsvp } from '@/lib/actions';
-import type { Game, Rsvp, Teams } from '@/types';
+import type { Game, Teams } from '@/types';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -43,15 +43,14 @@ export default async function GamePage() {
 
   let teams: Teams | null = null;
   let teamProfiles: Record<string, string> = {};
-  if (isConfirmed) {
-    const { data: teamData } = await supabase.from('teams').select('*')
-      .eq('game_id', game.id).eq('published', true).single();
-    teams = teamData;
-    if (teams) {
-      const allIds = [...teams.team_a, ...teams.team_b];
-      const { data: profiles } = await supabase.from('profiles').select('id, name').in('id', allIds);
-      if (profiles) profiles.forEach((p: any) => { teamProfiles[p.id] = p.name; });
-    }
+  const { data: teamData } = await supabase.from('teams').select('*')
+    .eq('game_id', game.id).maybeSingle();
+  teams = teamData;
+
+  if (teams) {
+    const allIds = [...teams.team_a, ...teams.team_b];
+    const { data: profiles } = await supabase.from('profiles').select('id, name').in('id', allIds);
+    if (profiles) profiles.forEach((p: any) => { teamProfiles[p.id] = p.name; });
   }
 
   return (
@@ -146,7 +145,10 @@ export default async function GamePage() {
               <h4 className="mb-2 text-sm font-bold text-blue-400">Team A</h4>
               <ul className="space-y-1">
                 {teams.team_a.map((id: string) => (
-                  <li key={id} className="text-sm text-gray-300">{teamProfiles[id] ?? id.slice(0, 8)}</li>
+                  <li key={id} className={`text-sm ${id === user.id ? 'text-emerald-400 font-medium' : 'text-gray-300'}`}>
+                    {teamProfiles[id] ?? id.slice(0, 8)}
+                    {id === user.id && ' (you)'}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -154,7 +156,10 @@ export default async function GamePage() {
               <h4 className="mb-2 text-sm font-bold text-orange-400">Team B</h4>
               <ul className="space-y-1">
                 {teams.team_b.map((id: string) => (
-                  <li key={id} className="text-sm text-gray-300">{teamProfiles[id] ?? id.slice(0, 8)}</li>
+                  <li key={id} className={`text-sm ${id === user.id ? 'text-emerald-400 font-medium' : 'text-gray-300'}`}>
+                    {teamProfiles[id] ?? id.slice(0, 8)}
+                    {id === user.id && ' (you)'}
+                  </li>
                 ))}
               </ul>
             </div>

@@ -140,8 +140,55 @@ export async function submitRating(formData: FormData) {
 export async function computeSkillProfiles() {
   await requireAdmin();
   const service = await createServiceSupabase();
-  const { error } = await service.rpc('compute_skill_profiles');
-  if (error) throw new Error(error.message);
+
+  // Get all players who have been rated
+  const { data: allRatings } = await service.from('player_ratings').select('*');
+  if (!allRatings || allRatings.length === 0) throw new Error('No ratings found');
+
+  // Group by ratee
+  const byRatee = new Map<string, any[]>();
+  allRatings.forEach((r: any) => {
+    if (!byRatee.has(r.ratee_id)) byRatee.set(r.ratee_id, []);
+    byRatee.get(r.ratee_id)!.push(r);
+  });
+
+  // Delete old profiles
+  await service.from('player_skill_profile').delete().neq('user_id', '00000000-0000-0000-0000-000000000000');
+
+  // Compute for each rated player
+  const attrs = ['tc', 'pd', 'da', 'en', 'fi', 'iq'] as const;
+
+  for (const [userId, ratings] of byRatee) {
+    const result: any = { user_id: userId, updated_at: new Date().toISOString() };
+    let nVotes = 0;
+
+    for (const attr of attrs) {
+      const vals = ratings.map((r: any) => Number(r[attr])).sort((a: number, b: number) => a - b);
+      const n = vals.length;
+      let trimmed = vals;
+
+      if (n >= 8) {
+        const drop = Math.round(n * 0.1);
+        trimmed = vals.slice(drop, n - drop);
+      } else if (n >= 4) {
+        trimmed = vals.slice(1, n - 1);
+      }
+
+      const avg = trimmed.reduce((s: number, v: number) => s + v, 0) / trimmed.length;
+      result[attr] = Math.round(avg * 100) / 100;
+
+      if (attr === 'tc') nVotes = n;
+    }
+
+    result.strength = Math.round(
+      (0.20 * result.tc + 0.20 * result.pd + 0.20 * result.da +
+       0.15 * result.en + 0.15 * result.fi + 0.10 * result.iq) * 1000
+    ) / 1000;
+    result.n_votes = nVotes;
+
+    await service.from('player_skill_profile').upsert(result, { onConflict: 'user_id' });
+  }
+
   revalidatePath('/admin');
 }
 

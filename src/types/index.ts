@@ -62,6 +62,18 @@ export interface PlayerSkillProfile {
   updated_at: string;
 }
 
+export interface PlayerSkillPublic {
+  user_id: string;
+  tc: number;
+  pd: number;
+  da: number;
+  en: number;
+  fi: number;
+  iq: number;
+  n_votes: number;
+  updated_at: string;
+}
+
 export interface FormAdjustment {
   id: string;
   game_id: string;
@@ -133,7 +145,7 @@ export const ATTRIBUTE_LABELS: Record<Attribute, string> = {
   da: 'Defending & Aggression',
   en: 'Endurance',
   fi: 'Finishing',
-  iq: 'Game IQ',
+  iq: 'Game Awareness',
 };
 
 export const AWARD_EMOJIS: Record<string, string> = {

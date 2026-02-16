@@ -40,6 +40,9 @@ export function AdminStats({ stats, profiles }: Props) {
                 {ATTRIBUTES.map((a) => (
                   <th key={a} className="px-2 py-2 text-center text-xs font-medium text-gray-500">{ATTRIBUTE_LABELS[a]}</th>
                 ))}
+                <th className="px-2 py-2 text-center text-xs font-medium text-purple-400" title="Not used in balancing">
+                  Presence*
+                </th>
                 <th className="pl-3 py-2 text-right text-xs font-medium text-amber-500 uppercase">STR</th>
                 <th className="pl-2 py-2 text-right text-xs font-medium text-gray-500">N</th>
               </tr>
@@ -51,12 +54,16 @@ export function AdminStats({ stats, profiles }: Props) {
                   {ATTRIBUTES.map((a) => (
                     <td key={a} className="px-2 py-2 text-center font-mono text-gray-400">{Number((s as any)[a]).toFixed(1)}</td>
                   ))}
+                  <td className="px-2 py-2 text-center font-mono text-purple-400">
+                    {s.presence != null ? Number(s.presence).toFixed(1) : '—'}
+                  </td>
                   <td className="pl-3 py-2 text-right font-mono font-bold text-amber-400">{Number(s.strength).toFixed(2)}</td>
                   <td className="pl-2 py-2 text-right font-mono text-gray-500">{s.n_votes}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <p className="mt-2 text-[11px] text-gray-600">* Presence is recognition only — not used in team balancing.</p>
         </div>
       )}
     </div>

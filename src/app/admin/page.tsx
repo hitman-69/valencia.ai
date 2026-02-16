@@ -4,7 +4,8 @@ import { AdminGameForm } from '@/components/AdminGameForm';
 import { AdminStats } from '@/components/AdminStats';
 import { AdminTeams } from '@/components/AdminTeams';
 import { AdminFormAdjustments } from '@/components/AdminFormAdjustments';
-import type { Game, Rsvp, PlayerSkillProfile, Teams, FormAdjustment } from '@/types';
+import { AdminCompleteGame } from '@/components/AdminCompleteGame';
+import type { Game, PlayerSkillProfile, Teams, FormAdjustment } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,7 @@ export default async function AdminPage() {
     let rsvps: any[] = [];
     let teams: Teams | null = null;
     let formAdjs: FormAdjustment[] = [];
+    let voteCount = 0;
     const allProfiles: Record<string, string> = {};
 
     const { data: profs } = await service.from('profiles').select('id, name');
@@ -48,6 +50,14 @@ export default async function AdminPage() {
       if (currentGame.use_form_adjustments) {
         const { data: adjData } = await service.from('form_adjustments').select('*').eq('game_id', currentGame.id);
         formAdjs = adjData ?? [];
+      }
+
+      // Count award votes
+      if (currentGame.status === 'completed') {
+        const { count } = await service.from('award_votes')
+          .select('*', { count: 'exact', head: true })
+          .eq('game_id', currentGame.id);
+        voteCount = count ?? 0;
       }
     }
 
@@ -101,8 +111,19 @@ export default async function AdminPage() {
           />
         )}
 
-        {currentGame && (
+        {currentGame && currentGame.status !== 'completed' && (
           <AdminTeams gameId={currentGame.id} teams={teams} stats={stats} profiles={allProfiles} />
+        )}
+
+        {currentGame && teams && (
+          <AdminCompleteGame
+            gameId={currentGame.id}
+            isCompleted={currentGame.status === 'completed'}
+            scoreA={currentGame.score_team_a}
+            scoreB={currentGame.score_team_b}
+            notes={currentGame.notes}
+            voteCount={voteCount}
+          />
         )}
       </div>
     );

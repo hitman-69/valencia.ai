@@ -79,7 +79,7 @@ export async function toggleRsvp(formData: FormData) {
   });
   const { data: game } = await supabase.from('games')
     .select('capacity, rsvp_cutoff, status').eq('id', parsed.game_id).single();
-  if (!game || game.status === 'closed') throw new Error('Game is closed');
+  if (!game || game.status === 'closed' || game.status === 'completed') throw new Error('Game is not open');
   if (game.rsvp_cutoff && new Date(game.rsvp_cutoff) < new Date()) throw new Error('RSVP cutoff passed');
 
   if (parsed.action === 'join') {
@@ -238,6 +238,12 @@ export async function generateTeamsAction(gameId: string): Promise<{ error: stri
   const profileMap = new Map<string, any>();
   (skillProfiles ?? []).forEach((p: any) => profileMap.set(p.user_id, p));
 
+  // Get performance modifiers
+  const { data: modifiers } = await service.from('player_performance_modifiers')
+    .select('*').in('user_id', playerIds);
+  const modMap = new Map<string, any>();
+  (modifiers ?? []).forEach((m: any) => modMap.set(m.user_id, m));
+
   let adjMap = new Map<string, any>();
   if (game?.use_form_adjustments) {
     const { data: adjs } = await service.from('form_adjustments')
@@ -261,16 +267,20 @@ export async function generateTeamsAction(gameId: string): Promise<{ error: stri
   const DEFAULT_BASE = 3.0;
   const players = playerIds.map((uid: string) => {
     const sp = profileMap.get(uid);
+    const mod = modMap.get(uid);
     const base: any = {};
     ATTRIBUTES.forEach((attr) => {
-      base[attr] = sp ? Number(sp[attr]) : DEFAULT_BASE;
+      let val = sp ? Number(sp[attr]) : DEFAULT_BASE;
+      // Apply performance modifier
+      if (mod) {
+        val += Number(mod[attr + '_delta'] || 0);
+      }
+      // Apply form adjustment
+      if (game?.use_form_adjustments && adjMap.has(uid)) {
+        val += adjMap.get(uid)[attr];
+      }
+      base[attr] = clamp(val, 1, 5);
     });
-    if (game?.use_form_adjustments && adjMap.has(uid)) {
-      const adj = adjMap.get(uid)!;
-      ATTRIBUTES.forEach((attr) => {
-        base[attr] = clamp(base[attr] + adj[attr], 1, 5);
-      });
-    }
     const strength = 0.20 * base.tc + 0.20 * base.pd + 0.20 * base.da
       + 0.15 * base.en + 0.15 * base.fi + 0.10 * base.iq;
     return { user_id: uid, ...base, strength };
@@ -319,4 +329,180 @@ export async function togglePublish(gameId: string, publish: boolean) {
     .update({ published: publish, updated_at: new Date().toISOString() }).eq('game_id', gameId);
   if (error) throw new Error(error.message);
   revalidatePath('/');
+}
+
+// ---------- ADMIN: COMPLETE GAME ----------
+
+export async function completeGame(gameId: string, formData: FormData): Promise<{ error: string | null }> {
+  await requireAdmin();
+  const service = await createServiceSupabase();
+
+  const scoreA = Number(formData.get('score_team_a'));
+  const scoreB = Number(formData.get('score_team_b'));
+  const notes = (formData.get('notes') as string) || null;
+
+  if (isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
+    return { error: 'Invalid scores' };
+  }
+
+  // Update game
+  const { error: gameError } = await service.from('games').update({
+    status: 'completed',
+    completed_at: new Date().toISOString(),
+    score_team_a: scoreA,
+    score_team_b: scoreB,
+    notes,
+  }).eq('id', gameId);
+  if (gameError) return { error: gameError.message };
+
+  // Auto-publish teams
+  await service.from('teams').update({
+    published: true,
+    updated_at: new Date().toISOString(),
+  }).eq('game_id', gameId);
+
+  revalidatePath('/');
+  revalidatePath('/admin');
+  revalidatePath('/games');
+  return { error: null };
+}
+
+// ---------- PLAYER: VOTE AWARDS ----------
+
+export async function submitAwardVote(formData: FormData) {
+  const { supabase, user } = await requireAuth();
+
+  const gameId = formData.get('game_id') as string;
+  const categoryId = formData.get('category_id') as string;
+  const nomineeId = formData.get('nominee_id') as string;
+
+  if (!gameId || !categoryId || !nomineeId) throw new Error('Missing fields');
+  if (nomineeId === user.id) throw new Error('Cannot vote for yourself');
+
+  // Verify game is completed
+  const { data: game } = await supabase.from('games').select('status').eq('id', gameId).single();
+  if (!game || game.status !== 'completed') throw new Error('Game is not completed');
+
+  const { error } = await supabase.from('award_votes').upsert({
+    game_id: gameId,
+    voter_id: user.id,
+    category_id: categoryId,
+    nominee_id: nomineeId,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'game_id,voter_id,category_id' });
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/game/${gameId}/vote-awards`);
+}
+
+// ---------- ADMIN: COMPUTE AWARD RESULTS ----------
+
+export async function computeAwardResults(gameId: string): Promise<{ error: string | null }> {
+  await requireAdmin();
+  const service = await createServiceSupabase();
+
+  // Get all votes for this game
+  const { data: votes } = await service.from('award_votes')
+    .select('*').eq('game_id', gameId);
+
+  if (!votes || votes.length === 0) return { error: 'No votes found for this game' };
+
+  // Get categories
+  const { data: categories } = await service.from('award_categories').select('id');
+  if (!categories) return { error: 'No categories found' };
+
+  // Delete old results for this game
+  await service.from('award_results').delete().eq('game_id', gameId);
+
+  for (const cat of categories) {
+    const catVotes = votes.filter((v: any) => v.category_id === cat.id);
+    if (catVotes.length === 0) continue;
+
+    // Count votes per nominee
+    const counts = new Map<string, number>();
+    catVotes.forEach((v: any) => {
+      counts.set(v.nominee_id, (counts.get(v.nominee_id) || 0) + 1);
+    });
+
+    // Sort by votes desc
+    const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    const winner = sorted[0];
+    const runnerUp = sorted.length > 1 ? sorted[1] : null;
+
+    const { error } = await service.from('award_results').upsert({
+      game_id: gameId,
+      category_id: cat.id,
+      winner_id: winner[0],
+      winner_votes: winner[1],
+      runner_up_id: runnerUp ? runnerUp[0] : null,
+      runner_up_votes: runnerUp ? runnerUp[1] : null,
+      computed_at: new Date().toISOString(),
+    }, { onConflict: 'game_id,category_id' });
+    if (error) return { error: error.message };
+  }
+
+  // Apply performance modifiers
+  await applyPerformanceModifiers(gameId, service);
+
+  revalidatePath(`/game/${gameId}`);
+  revalidatePath('/admin');
+  revalidatePath('/games');
+  return { error: null };
+}
+
+// ---------- APPLY PERFORMANCE MODIFIERS ----------
+
+const AWARD_DELTAS: Record<string, Record<string, number>> = {
+  mvp:           { tc: 0.05, pd: 0.05, da: 0.05, en: 0.05, fi: 0.05, iq: 0.08 },
+  top_scorer:    { tc: 0,    pd: 0,    da: 0,    en: 0,    fi: 0.10, iq: 0    },
+  best_defender: { tc: 0,    pd: 0,    da: 0.10, en: 0,    fi: 0,    iq: 0    },
+  best_goalie:   { tc: 0,    pd: 0,    da: 0.10, en: 0,    fi: 0,    iq: 0.05 },
+  most_improved: { tc: 0.05, pd: 0,    da: 0,    en: 0.05, fi: 0,    iq: 0    },
+};
+
+async function applyPerformanceModifiers(gameId: string, service: any) {
+  const { data: results } = await service.from('award_results')
+    .select('*').eq('game_id', gameId);
+  if (!results || results.length === 0) return;
+
+  // Decay all existing modifiers by 0.98
+  const { data: allMods } = await service.from('player_performance_modifiers').select('*');
+  if (allMods) {
+    for (const mod of allMods) {
+      const updated: any = { updated_at: new Date().toISOString() };
+      ATTRIBUTES.forEach((attr) => {
+        updated[attr + '_delta'] = Number(mod[attr + '_delta'] || 0) * 0.98;
+      });
+      await service.from('player_performance_modifiers')
+        .update(updated).eq('user_id', mod.user_id);
+    }
+  }
+
+  // Apply deltas for winners and runners-up
+  for (const result of results) {
+    const deltas = AWARD_DELTAS[result.category_id];
+    if (!deltas) continue;
+
+    // Winner: full delta
+    await applyDeltaToPlayer(service, result.winner_id, deltas, 1.0);
+
+    // Runner-up: half delta
+    if (result.runner_up_id) {
+      await applyDeltaToPlayer(service, result.runner_up_id, deltas, 0.5);
+    }
+  }
+}
+
+async function applyDeltaToPlayer(service: any, userId: string, deltas: Record<string, number>, multiplier: number) {
+  const { data: existing } = await service.from('player_performance_modifiers')
+    .select('*').eq('user_id', userId).maybeSingle();
+
+  const updated: any = { user_id: userId, updated_at: new Date().toISOString() };
+  ATTRIBUTES.forEach((attr) => {
+    const current = existing ? Number(existing[attr + '_delta'] || 0) : 0;
+    updated[attr + '_delta'] = current + (deltas[attr] || 0) * multiplier;
+  });
+
+  await service.from('player_performance_modifiers')
+    .upsert(updated, { onConflict: 'user_id' });
 }

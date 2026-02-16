@@ -81,7 +81,7 @@ export default async function ScoresPage() {
                         {Number((s as any)[a]).toFixed(1)}
                       </td>
                     ))}
-                    <td className="px-2 py-2.5 text-center font-mono text-purple-400">
+                    <td className="px-2 py-2.5 text-center font-mono text-gray-400">
                       {s.presence != null ? Number(s.presence).toFixed(1) : '—'}
                     </td>
                     <td className="pl-3 py-2.5 text-right font-mono text-gray-500">

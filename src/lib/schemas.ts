@@ -6,7 +6,7 @@ export const gameSchema = z.object({
   capacity: z.number().int().min(2).max(30).default(10),
   rsvp_cutoff: z.string().optional(),
   rating_cutoff: z.string().optional(),
-  status: z.enum(['draft', 'open', 'closed']).default('open'),
+  status: z.enum(['draft', 'open', 'closed', 'completed']).default('open'),
   use_form_adjustments: z.boolean().default(false),
 });
 

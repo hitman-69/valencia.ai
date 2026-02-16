@@ -109,7 +109,7 @@ export async function toggleRsvp(formData: FormData) {
   revalidatePath('/');
 }
 
-// ---------- PERSISTENT RATINGS ----------
+// ---------- PERSISTENT RATINGS (includes presence) ----------
 
 export async function submitRating(formData: FormData) {
   const { supabase, user } = await requireAuth();
@@ -121,6 +121,7 @@ export async function submitRating(formData: FormData) {
     en: Number(formData.get('en')),
     fi: Number(formData.get('fi')),
     iq: Number(formData.get('iq')),
+    presence: Number(formData.get('presence')),
   });
   if (parsed.ratee_id === user.id) throw new Error('Cannot rate yourself');
   const { error } = await supabase.from('player_ratings').upsert({
@@ -128,13 +129,14 @@ export async function submitRating(formData: FormData) {
     ratee_id: parsed.ratee_id,
     tc: parsed.tc, pd: parsed.pd, da: parsed.da,
     en: parsed.en, fi: parsed.fi, iq: parsed.iq,
+    presence: parsed.presence,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'rater_id,ratee_id' });
   if (error) throw new Error(error.message);
   revalidatePath('/vote');
 }
 
-// ---------- ADMIN: COMPUTE SKILL PROFILES ----------
+// ---------- ADMIN: COMPUTE SKILL PROFILES (presence aggregated but NOT in strength) ----------
 
 export async function computeSkillProfiles() {
   await requireAdmin();
@@ -151,13 +153,14 @@ export async function computeSkillProfiles() {
 
   await service.from('player_skill_profile').delete().neq('user_id', '00000000-0000-0000-0000-000000000000');
 
-  const attrs = ['tc', 'pd', 'da', 'en', 'fi', 'iq'] as const;
+  // All fields to aggregate (includes presence)
+  const allFields = ['tc', 'pd', 'da', 'en', 'fi', 'iq', 'presence'] as const;
 
   for (const [userId, ratings] of Array.from(byRatee.entries())) {
     const result: any = { user_id: userId, updated_at: new Date().toISOString() };
     let nVotes = 0;
 
-    for (const attr of attrs) {
+    for (const attr of allFields) {
       const vals = ratings.map((r: any) => Number(r[attr])).sort((a: number, b: number) => a - b);
       const n = vals.length;
       let trimmed = vals;
@@ -175,6 +178,7 @@ export async function computeSkillProfiles() {
       if (attr === 'tc') nVotes = n;
     }
 
+    // Strength does NOT include presence
     result.strength = Math.round(
       (0.20 * result.tc + 0.20 * result.pd + 0.20 * result.da +
        0.15 * result.en + 0.15 * result.fi + 0.10 * result.iq) * 1000
@@ -185,9 +189,10 @@ export async function computeSkillProfiles() {
   }
 
   revalidatePath('/admin');
+  revalidatePath('/scores');
 }
 
-// ---------- ADMIN: FORM ADJUSTMENTS ----------
+// ---------- ADMIN: FORM ADJUSTMENTS (no presence) ----------
 
 export async function saveFormAdjustment(formData: FormData) {
   const { user } = await requireAdmin();
@@ -216,7 +221,7 @@ export async function saveFormAdjustment(formData: FormData) {
   revalidatePath('/admin');
 }
 
-// ---------- ADMIN: GENERATE TEAMS ----------
+// ---------- ADMIN: GENERATE TEAMS (presence NOT used) ----------
 
 export async function generateTeamsAction(gameId: string): Promise<{ error: string | null }> {
   await requireAdmin();
@@ -238,7 +243,6 @@ export async function generateTeamsAction(gameId: string): Promise<{ error: stri
   const profileMap = new Map<string, any>();
   (skillProfiles ?? []).forEach((p: any) => profileMap.set(p.user_id, p));
 
-  // Get performance modifiers
   const { data: modifiers } = await service.from('player_performance_modifiers')
     .select('*').in('user_id', playerIds);
   const modMap = new Map<string, any>();
@@ -265,17 +269,16 @@ export async function generateTeamsAction(gameId: string): Promise<{ error: stri
   }
 
   const DEFAULT_BASE = 3.0;
+  // Only use ATTRIBUTES (6 fields, no presence)
   const players = playerIds.map((uid: string) => {
     const sp = profileMap.get(uid);
     const mod = modMap.get(uid);
     const base: any = {};
     ATTRIBUTES.forEach((attr) => {
       let val = sp ? Number(sp[attr]) : DEFAULT_BASE;
-      // Apply performance modifier
       if (mod) {
         val += Number(mod[attr + '_delta'] || 0);
       }
-      // Apply form adjustment
       if (game?.use_form_adjustments && adjMap.has(uid)) {
         val += adjMap.get(uid)[attr];
       }
@@ -345,7 +348,6 @@ export async function completeGame(gameId: string, formData: FormData): Promise<
     return { error: 'Invalid scores' };
   }
 
-  // Update game
   const { error: gameError } = await service.from('games').update({
     status: 'completed',
     completed_at: new Date().toISOString(),
@@ -355,7 +357,6 @@ export async function completeGame(gameId: string, formData: FormData): Promise<
   }).eq('id', gameId);
   if (gameError) return { error: gameError.message };
 
-  // Auto-publish teams
   await service.from('teams').update({
     published: true,
     updated_at: new Date().toISOString(),
@@ -379,7 +380,6 @@ export async function submitAwardVote(formData: FormData) {
   if (!gameId || !categoryId || !nomineeId) throw new Error('Missing fields');
   if (nomineeId === user.id) throw new Error('Cannot vote for yourself');
 
-  // Verify game is completed
   const { data: game } = await supabase.from('games').select('status').eq('id', gameId).single();
   if (!game || game.status !== 'completed') throw new Error('Game is not completed');
 
@@ -401,30 +401,25 @@ export async function computeAwardResults(gameId: string): Promise<{ error: stri
   await requireAdmin();
   const service = await createServiceSupabase();
 
-  // Get all votes for this game
   const { data: votes } = await service.from('award_votes')
     .select('*').eq('game_id', gameId);
 
   if (!votes || votes.length === 0) return { error: 'No votes found for this game' };
 
-  // Get categories
   const { data: categories } = await service.from('award_categories').select('id');
   if (!categories) return { error: 'No categories found' };
 
-  // Delete old results for this game
   await service.from('award_results').delete().eq('game_id', gameId);
 
   for (const cat of categories) {
     const catVotes = votes.filter((v: any) => v.category_id === cat.id);
     if (catVotes.length === 0) continue;
 
-    // Count votes per nominee
     const counts = new Map<string, number>();
     catVotes.forEach((v: any) => {
       counts.set(v.nominee_id, (counts.get(v.nominee_id) || 0) + 1);
     });
 
-    // Sort by votes desc
     const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
     const winner = sorted[0];
     const runnerUp = sorted.length > 1 ? sorted[1] : null;
@@ -441,7 +436,6 @@ export async function computeAwardResults(gameId: string): Promise<{ error: stri
     if (error) return { error: error.message };
   }
 
-  // Apply performance modifiers
   await applyPerformanceModifiers(gameId, service);
 
   revalidatePath(`/game/${gameId}`);
@@ -465,7 +459,6 @@ async function applyPerformanceModifiers(gameId: string, service: any) {
     .select('*').eq('game_id', gameId);
   if (!results || results.length === 0) return;
 
-  // Decay all existing modifiers by 0.98
   const { data: allMods } = await service.from('player_performance_modifiers').select('*');
   if (allMods) {
     for (const mod of allMods) {
@@ -478,15 +471,10 @@ async function applyPerformanceModifiers(gameId: string, service: any) {
     }
   }
 
-  // Apply deltas for winners and runners-up
   for (const result of results) {
     const deltas = AWARD_DELTAS[result.category_id];
     if (!deltas) continue;
-
-    // Winner: full delta
     await applyDeltaToPlayer(service, result.winner_id, deltas, 1.0);
-
-    // Runner-up: half delta
     if (result.runner_up_id) {
       await applyDeltaToPlayer(service, result.runner_up_id, deltas, 0.5);
     }

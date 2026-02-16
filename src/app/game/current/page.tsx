@@ -1,5 +1,6 @@
 import { createServerSupabase } from '@/lib/supabase/server';
 import { toggleRsvp } from '@/lib/actions';
+import Link from 'next/link';
 import type { Game, Teams } from '@/types';
 
 function formatDate(iso: string) {
@@ -15,18 +16,34 @@ export default async function GamePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // Show the next open/closed game (not completed ones)
   const { data: games } = await supabase.from('games').select('*')
     .in('status', ['open', 'closed']).order('starts_at', { ascending: true }).limit(1);
   const game: Game | null = games?.[0] ?? null;
 
+  // Also check for most recent completed game for voting prompt
+  const { data: recentCompleted } = await supabase.from('games').select('id, location, starts_at')
+    .eq('status', 'completed').order('completed_at', { ascending: false }).limit(1);
+  const lastCompleted = recentCompleted?.[0] ?? null;
+
   if (!game) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="card text-center">
-          <span className="text-5xl">🏟️</span>
-          <h2 className="mt-3 font-display text-xl font-bold">No upcoming game</h2>
-          <p className="mt-1 text-sm text-gray-400">Check back later or ask the admin to create one.</p>
+      <div className="space-y-6">
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <div className="card text-center">
+            <span className="text-5xl">🏟️</span>
+            <h2 className="mt-3 font-display text-xl font-bold">No upcoming game</h2>
+            <p className="mt-1 text-sm text-gray-400">Check back later or ask the admin to create one.</p>
+          </div>
         </div>
+        {lastCompleted && (
+          <div className="card text-center">
+            <p className="text-sm text-gray-400 mb-2">Last match completed:</p>
+            <Link href={`/game/${lastCompleted.id}`} className="text-emerald-400 hover:text-emerald-300 font-medium">
+              View results & vote for awards →
+            </Link>
+          </div>
+        )}
       </div>
     );
   }
@@ -55,6 +72,13 @@ export default async function GamePage() {
 
   return (
     <div className="space-y-6">
+      {lastCompleted && (
+        <Link href={`/game/${lastCompleted.id}`}
+          className="block rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-center text-sm text-amber-400 hover:bg-amber-500/10 transition">
+          🗳️ Vote for awards from the last match →
+        </Link>
+      )}
+
       <div className="card">
         <div className="flex items-start justify-between">
           <div>

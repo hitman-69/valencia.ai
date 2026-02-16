@@ -16,7 +16,6 @@ export default async function ScoresPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  // Use the public view (no strength column)
   const { data: stats } = await supabase
     .from('player_skill_public' as any)
     .select('*');
@@ -28,7 +27,6 @@ export default async function ScoresPage() {
   const nameMap: Record<string, string> = {};
   if (profiles) profiles.forEach((p: any) => { nameMap[p.id] = p.name; });
 
-  // Sort alphabetically by name
   const skillProfiles: PlayerSkillPublic[] = (stats ?? []).sort((a: any, b: any) => {
     const nameA = (nameMap[a.user_id] ?? '').toLowerCase();
     const nameB = (nameMap[b.user_id] ?? '').toLowerCase();
@@ -61,6 +59,9 @@ export default async function ScoresPage() {
                     {ATTRIBUTE_LABELS[a]}
                   </th>
                 ))}
+                <th className="px-2 py-2.5 text-center text-xs font-medium text-purple-400">
+                  {ATTRIBUTE_LABELS.presence}
+                </th>
                 <th className="pl-3 py-2.5 text-right text-xs font-medium text-gray-500">Votes</th>
                 <th className="pl-3 py-2.5 text-right text-xs font-medium text-gray-500 hidden sm:table-cell">Conf.</th>
               </tr>
@@ -80,6 +81,9 @@ export default async function ScoresPage() {
                         {Number((s as any)[a]).toFixed(1)}
                       </td>
                     ))}
+                    <td className="px-2 py-2.5 text-center font-mono text-purple-400">
+                      {s.presence != null ? Number(s.presence).toFixed(1) : '—'}
+                    </td>
                     <td className="pl-3 py-2.5 text-right font-mono text-gray-500">
                       {s.n_votes}
                     </td>

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { submitRating } from '@/lib/actions';
-import { ATTRIBUTES, ATTRIBUTE_LABELS } from '@/types';
+import { ALL_RATING_FIELDS, ATTRIBUTE_LABELS } from '@/types';
 import type { PlayerRating } from '@/types';
 
 interface Player { id: string; name: string; }
@@ -12,7 +12,11 @@ export function VoteForm({ players, existingRatings }: Props) {
     const init: Record<string, Record<string, number>> = {};
     players.forEach((p) => {
       const ex = existingRatings[p.id];
-      init[p.id] = { tc: ex?.tc ?? 3, pd: ex?.pd ?? 3, da: ex?.da ?? 3, en: ex?.en ?? 3, fi: ex?.fi ?? 3, iq: ex?.iq ?? 3 };
+      init[p.id] = {
+        tc: ex?.tc ?? 3, pd: ex?.pd ?? 3, da: ex?.da ?? 3,
+        en: ex?.en ?? 3, fi: ex?.fi ?? 3, iq: ex?.iq ?? 3,
+        presence: ex?.presence ?? 3,
+      };
     });
     return init;
   });
@@ -34,7 +38,7 @@ export function VoteForm({ players, existingRatings }: Props) {
     const r = ratings[pid];
     const fd = new FormData();
     fd.set('ratee_id', pid);
-    ATTRIBUTES.forEach((a) => fd.set(a, String(r[a])));
+    ALL_RATING_FIELDS.forEach((a) => fd.set(a, String(r[a])));
     startTransition(async () => {
       try {
         await submitRating(fd);
@@ -53,15 +57,22 @@ export function VoteForm({ players, existingRatings }: Props) {
             {saved[p.id] && <span className="badge-green text-[11px]">✓ Saved</span>}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {ATTRIBUTES.map((attr) => (
+            {ALL_RATING_FIELDS.map((attr) => (
               <div key={attr}>
-                <label className="label">{ATTRIBUTE_LABELS[attr]}</label>
+                <label className="label">
+                  {ATTRIBUTE_LABELS[attr]}
+                  {attr === 'presence' && (
+                    <span className="ml-1 text-[10px] text-gray-500 normal-case font-normal">(recognition only)</span>
+                  )}
+                </label>
                 <div className="flex items-center gap-1.5">
                   {[1, 2, 3, 4, 5].map((v) => (
                     <button key={v} type="button" onClick={() => setAttr(p.id, attr, v)}
                       className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm font-mono font-bold transition-all cursor-pointer ${
                         ratings[p.id][attr] === v
-                          ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 scale-110'
+                          ? attr === 'presence'
+                            ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 scale-110'
+                            : 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 scale-110'
                           : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                       }`}>
                       {v}

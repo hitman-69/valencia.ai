@@ -70,9 +70,7 @@ export function VoteForm({ players, existingRatings }: Props) {
                     <button key={v} type="button" onClick={() => setAttr(p.id, attr, v)}
                       className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm font-mono font-bold transition-all cursor-pointer ${
                         ratings[p.id][attr] === v
-                          ? attr === 'presence'
-                            ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 scale-110'
-                            : 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 scale-110'
+                          ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 scale-110'
                           : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                       }`}>
                       {v}

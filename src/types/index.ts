@@ -45,6 +45,7 @@ export interface PlayerRating {
   en: number;
   fi: number;
   iq: number;
+  presence: number;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +58,7 @@ export interface PlayerSkillProfile {
   en: number;
   fi: number;
   iq: number;
+  presence: number;
   strength: number;
   n_votes: number;
   updated_at: string;
@@ -70,6 +72,7 @@ export interface PlayerSkillPublic {
   en: number;
   fi: number;
   iq: number;
+  presence: number;
   n_votes: number;
   updated_at: string;
 }
@@ -136,16 +139,22 @@ export interface PerformanceModifier {
   updated_at: string;
 }
 
+// ATTRIBUTES used for strength + optimizer (no presence)
 export const ATTRIBUTES = ['tc', 'pd', 'da', 'en', 'fi', 'iq'] as const;
 export type Attribute = (typeof ATTRIBUTES)[number];
 
-export const ATTRIBUTE_LABELS: Record<Attribute, string> = {
+// ALL_RATING_FIELDS includes presence for voting UI
+export const ALL_RATING_FIELDS = ['tc', 'pd', 'da', 'en', 'fi', 'iq', 'presence'] as const;
+export type RatingField = (typeof ALL_RATING_FIELDS)[number];
+
+export const ATTRIBUTE_LABELS: Record<string, string> = {
   tc: 'Technique',
   pd: 'Passing & Dribbling',
   da: 'Defending & Aggression',
   en: 'Endurance',
   fi: 'Finishing',
   iq: 'Game Awareness',
+  presence: 'On-Field Presence',
 };
 
 export const AWARD_EMOJIS: Record<string, string> = {

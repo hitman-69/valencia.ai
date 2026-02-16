@@ -19,7 +19,8 @@ export async function Nav() {
         {user && (
           <div className="flex items-center gap-1">
             <Link href="/game/current" className="btn-ghost text-sm">Game</Link>
-           <Link href="/vote" className="btn-ghost text-sm">Rate</Link>
+            <Link href="/games" className="btn-ghost text-sm">History</Link>
+            <Link href="/vote" className="btn-ghost text-sm">Rate</Link>
             <Link href="/scores" className="btn-ghost text-sm">Scores</Link>
             {isAdmin && <Link href="/admin" className="btn-ghost text-sm text-amber-400/80 hover:text-amber-300">Admin</Link>}
             <form action="/auth/signout" method="post" className="ml-2">

@@ -40,7 +40,7 @@ export function AdminStats({ stats, profiles }: Props) {
                 {ATTRIBUTES.map((a) => (
                   <th key={a} className="px-2 py-2 text-center text-xs font-medium text-gray-500">{ATTRIBUTE_LABELS[a]}</th>
                 ))}
-                <th className="px-2 py-2 text-center text-xs font-medium text-purple-400" title="Not used in balancing">
+                <th className="px-2 py-2 text-center text-xs font-medium text-gray-500" title="Not used in balancing">
                   Presence*
                 </th>
                 <th className="pl-3 py-2 text-right text-xs font-medium text-amber-500 uppercase">STR</th>
@@ -54,7 +54,7 @@ export function AdminStats({ stats, profiles }: Props) {
                   {ATTRIBUTES.map((a) => (
                     <td key={a} className="px-2 py-2 text-center font-mono text-gray-400">{Number((s as any)[a]).toFixed(1)}</td>
                   ))}
-                  <td className="px-2 py-2 text-center font-mono text-purple-400">
+                  <td className="px-2 py-2 text-center font-mono text-gray-500">
                     {s.presence != null ? Number(s.presence).toFixed(1) : '—'}
                   </td>
                   <td className="pl-3 py-2 text-right font-mono font-bold text-amber-400">{Number(s.strength).toFixed(2)}</td>

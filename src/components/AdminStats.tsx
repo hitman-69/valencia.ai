@@ -16,7 +16,7 @@ export function AdminStats({ stats, profiles }: Props) {
         await computeSkillProfiles();
         setMessage('Skill profiles computed! Refresh to see updated data.');
         setTimeout(() => setMessage(''), 4000);
-      } catch (err: any) { setMessage('Error: ' + err.message); }
+      } catch (err: any) { setMessage('Error: ' + (err.message || err.digest || JSON.stringify(err))); }
     });
   }
 
@@ -38,7 +38,7 @@ export function AdminStats({ stats, profiles }: Props) {
               <tr className="border-b border-gray-800">
                 <th className="py-2 pr-3 text-left text-xs font-medium text-gray-500">Player</th>
                 {ATTRIBUTES.map((a) => (
-                  <th key={a} className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase">{a}</th>
+                  <th key={a} className="px-2 py-2 text-center text-xs font-medium text-gray-500">{ATTRIBUTE_LABELS[a]}</th>
                 ))}
                 <th className="pl-3 py-2 text-right text-xs font-medium text-amber-500 uppercase">STR</th>
                 <th className="pl-2 py-2 text-right text-xs font-medium text-gray-500">N</th>

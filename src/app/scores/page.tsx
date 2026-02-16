@@ -59,7 +59,7 @@ export default async function ScoresPage() {
                     {ATTRIBUTE_LABELS[a]}
                   </th>
                 ))}
-                <th className="px-2 py-2.5 text-center text-xs font-medium text-purple-400">
+               <th className="px-2 py-2.5 text-center text-xs font-medium text-gray-500">
                   {ATTRIBUTE_LABELS.presence}
                 </th>
                 <th className="pl-3 py-2.5 text-right text-xs font-medium text-gray-500">Votes</th>
@@ -77,7 +77,7 @@ export default async function ScoresPage() {
                       {isMe && <span className="ml-1.5 text-[10px] text-emerald-600">(you)</span>}
                     </td>
                     {ATTRIBUTES.map((a) => (
-                      <td key={a} className="px-2 py-2.5 text-center font-mono text-gray-400">
+                      <td className="px-2 py-2.5 text-center font-mono text-gray-400">
                         {Number((s as any)[a]).toFixed(1)}
                       </td>
                     ))}

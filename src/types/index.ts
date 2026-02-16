@@ -1,5 +1,5 @@
 export type Role = 'admin' | 'player';
-export type GameStatus = 'draft' | 'open' | 'closed';
+export type GameStatus = 'draft' | 'open' | 'closed' | 'completed';
 export type RsvpStatus = 'confirmed' | 'waitlist' | 'cancelled';
 
 export interface Profile {
@@ -20,6 +20,10 @@ export interface Game {
   use_form_adjustments: boolean;
   created_by: string | null;
   created_at: string;
+  completed_at: string | null;
+  score_team_a: number | null;
+  score_team_b: number | null;
+  notes: string | null;
 }
 
 export interface Rsvp {
@@ -83,6 +87,43 @@ export interface Teams {
   updated_at: string;
 }
 
+export interface AwardCategory {
+  id: string;
+  label: string;
+  description: string | null;
+}
+
+export interface AwardVote {
+  id: string;
+  game_id: string;
+  voter_id: string;
+  category_id: string;
+  nominee_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AwardResult {
+  game_id: string;
+  category_id: string;
+  winner_id: string;
+  winner_votes: number;
+  runner_up_id: string | null;
+  runner_up_votes: number | null;
+  computed_at: string;
+}
+
+export interface PerformanceModifier {
+  user_id: string;
+  tc_delta: number;
+  pd_delta: number;
+  da_delta: number;
+  en_delta: number;
+  fi_delta: number;
+  iq_delta: number;
+  updated_at: string;
+}
+
 export const ATTRIBUTES = ['tc', 'pd', 'da', 'en', 'fi', 'iq'] as const;
 export type Attribute = (typeof ATTRIBUTES)[number];
 
@@ -93,4 +134,12 @@ export const ATTRIBUTE_LABELS: Record<Attribute, string> = {
   en: 'Endurance',
   fi: 'Finishing',
   iq: 'Game IQ',
+};
+
+export const AWARD_EMOJIS: Record<string, string> = {
+  mvp: '🏆',
+  top_scorer: '⚽',
+  best_defender: '🛡️',
+  best_goalie: '🧤',
+  most_improved: '📈',
 };

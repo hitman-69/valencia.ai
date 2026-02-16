@@ -61,9 +61,7 @@ export function VoteForm({ players, existingRatings }: Props) {
               <div key={attr}>
                 <label className="label">
                   {ATTRIBUTE_LABELS[attr]}
-                  {attr === 'presence' && (
-                    <span className="ml-1 text-[10px] text-gray-500 normal-case font-normal">(recognition only)</span>
-                  )}
+              
                 </label>
                 <div className="flex items-center gap-1.5">
                   {[1, 2, 3, 4, 5].map((v) => (

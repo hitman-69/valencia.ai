@@ -23,6 +23,7 @@ export const ratingSchema = z.object({
   en: z.number().int().min(1).max(5),
   fi: z.number().int().min(1).max(5),
   iq: z.number().int().min(1).max(5),
+  presence: z.number().int().min(1).max(5),
 });
 
 export const formAdjustmentSchema = z.object({

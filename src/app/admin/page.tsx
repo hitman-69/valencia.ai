@@ -28,45 +28,57 @@ export default async function AdminPage() {
     }
 
     const service = await createServiceSupabase();
-    const { data: games } = await service.from('games').select('*').order('starts_at', { ascending: false }).limit(5);
-    const currentGame: Game | null = games?.[0] ?? null;
-
-    let rsvps: any[] = [];
-    let teams: Teams | null = null;
-    let formAdjs: FormAdjustment[] = [];
-    let voteCount = 0;
     const allProfiles: Record<string, string> = {};
-
     const { data: profs } = await service.from('profiles').select('id, name');
     if (profs) profs.forEach((p: any) => { allProfiles[p.id] = p.name; });
 
-    if (currentGame) {
+    // Find current active game (open or closed, NOT completed)
+    const { data: activeGames } = await service.from('games').select('*')
+      .in('status', ['open', 'closed']).order('starts_at', { ascending: false }).limit(1);
+    const activeGame: Game | null = activeGames?.[0] ?? null;
+
+    // Find most recent completed game (for scoring/awards)
+    const { data: completedGames } = await service.from('games').select('*')
+      .eq('status', 'completed').order('completed_at', { ascending: false }).limit(1);
+    const lastCompleted: Game | null = completedGames?.[0] ?? null;
+
+    // Active game data
+    let rsvps: any[] = [];
+    let teams: Teams | null = null;
+    let formAdjs: FormAdjustment[] = [];
+
+    if (activeGame) {
       const { data: rsvpData } = await service.from('rsvps').select('*, profiles(id, name)')
-        .eq('game_id', currentGame.id).neq('status', 'cancelled').order('created_at', { ascending: true });
+        .eq('game_id', activeGame.id).neq('status', 'cancelled').order('created_at', { ascending: true });
       rsvps = rsvpData ?? [];
 
-      const { data: teamData } = await service.from('teams').select('*').eq('game_id', currentGame.id).maybeSingle();
+      const { data: teamData } = await service.from('teams').select('*').eq('game_id', activeGame.id).maybeSingle();
       teams = teamData;
 
-      if (currentGame.use_form_adjustments) {
-        const { data: adjData } = await service.from('form_adjustments').select('*').eq('game_id', currentGame.id);
+      if (activeGame.use_form_adjustments) {
+        const { data: adjData } = await service.from('form_adjustments').select('*').eq('game_id', activeGame.id);
         formAdjs = adjData ?? [];
-      }
-
-      // Count award votes
-      if (currentGame.status === 'completed') {
-        const { count } = await service.from('award_votes')
-          .select('*', { count: 'exact', head: true })
-          .eq('game_id', currentGame.id);
-        voteCount = count ?? 0;
       }
     }
 
+    // Completed game data
+    let completedTeams: Teams | null = null;
+    let completedVoteCount = 0;
+    if (lastCompleted) {
+      const { data: ctData } = await service.from('teams').select('*').eq('game_id', lastCompleted.id).maybeSingle();
+      completedTeams = ctData;
+
+      const { count } = await service.from('award_votes')
+        .select('*', { count: 'exact', head: true })
+        .eq('game_id', lastCompleted.id);
+      completedVoteCount = count ?? 0;
+    }
+
+    // Skill profiles
     const { data: statsData } = await service.from('player_skill_profile').select('*').order('strength', { ascending: false });
     const stats: PlayerSkillProfile[] = statsData ?? [];
 
     const confirmed = rsvps.filter((r: any) => r.status === 'confirmed');
-    const waitlist = rsvps.filter((r: any) => r.status === 'waitlist');
 
     return (
       <div className="space-y-8">
@@ -75,38 +87,56 @@ export default async function AdminPage() {
           <p className="mt-1 text-sm text-gray-400">Manage games, stats, and teams.</p>
         </div>
 
-        <AdminGameForm game={currentGame} />
+        {/* LAST COMPLETED GAME — scoring & awards */}
+        {lastCompleted && completedTeams && (
+          <AdminCompleteGame
+            gameId={lastCompleted.id}
+            isCompleted={true}
+            scoreA={lastCompleted.score_team_a}
+            scoreB={lastCompleted.score_team_b}
+            notes={lastCompleted.notes}
+            voteCount={completedVoteCount}
+          />
+        )}
 
-      {currentGame && (
+        {/* CREATE OR EDIT ACTIVE GAME */}
+        <AdminGameForm game={activeGame} />
+
+        {/* RSVP MANAGEMENT */}
+        {activeGame && (
           <AdminRsvpManager
-            gameId={currentGame.id}
+            gameId={activeGame.id}
             allPlayers={Object.entries(allProfiles).map(([id, name]) => ({ id, name }))}
             currentRsvps={rsvps.map((r: any) => ({ user_id: r.user_id, status: r.status, name: r.profiles?.name ?? 'Unknown' }))}
           />
         )}
 
+        {/* SKILL PROFILES */}
         <AdminStats stats={stats} profiles={allProfiles} />
 
-        {currentGame && currentGame.use_form_adjustments && (
+        {/* FORM ADJUSTMENTS */}
+        {activeGame && activeGame.use_form_adjustments && (
           <AdminFormAdjustments
-            gameId={currentGame.id}
+            gameId={activeGame.id}
             confirmed={confirmed.map((r: any) => ({ id: r.user_id, name: r.profiles?.name ?? 'Unknown' }))}
             existing={formAdjs}
           />
         )}
 
-        {currentGame && currentGame.status !== 'completed' && (
-          <AdminTeams gameId={currentGame.id} teams={teams} stats={stats} profiles={allProfiles} />
+        {/* TEAM GENERATION — only for active game */}
+        {activeGame && (
+          <AdminTeams gameId={activeGame.id} teams={teams} stats={stats} profiles={allProfiles} />
         )}
 
-        {currentGame && teams && (
+        {/* COMPLETE ACTIVE GAME — only when teams exist and game is not yet completed */}
+        {activeGame && teams && (
           <AdminCompleteGame
-            gameId={currentGame.id}
-            isCompleted={currentGame.status === 'completed'}
-            scoreA={currentGame.score_team_a}
-            scoreB={currentGame.score_team_b}
-            notes={currentGame.notes}
-            voteCount={voteCount}
+            gameId={activeGame.id}
+            isCompleted={false}
+            scoreA={null}
+            scoreB={null}
+            notes={null}
+            voteCount={0}
           />
         )}
       </div>

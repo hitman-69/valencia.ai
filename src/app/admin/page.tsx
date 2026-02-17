@@ -77,29 +77,12 @@ export default async function AdminPage() {
 
         <AdminGameForm game={currentGame} />
 
-        {currentGame && (
-          <div className="card">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
-              RSVPs — {confirmed.length} confirmed, {waitlist.length} waitlisted
-            </h2>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div>
-                <p className="text-xs text-gray-500 mb-1.5">Confirmed</p>
-                {confirmed.length === 0 && <p className="text-sm text-gray-600">None</p>}
-                {confirmed.map((r: any, i: number) => (
-                  <p key={r.user_id} className="text-sm text-gray-300">{i + 1}. {r.profiles?.name ?? 'Unknown'}</p>
-                ))}
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1.5">Waitlist</p>
-                {waitlist.length === 0 ? <p className="text-sm text-gray-600">Empty</p> :
-                  waitlist.map((r: any, i: number) => (
-                    <p key={r.user_id} className="text-sm text-gray-300">{i + 1}. {r.profiles?.name ?? 'Unknown'}</p>
-                  ))
-                }
-              </div>
-            </div>
-          </div>
+      {currentGame && (
+          <AdminRsvpManager
+            gameId={currentGame.id}
+            allPlayers={Object.entries(allProfiles).map(([id, name]) => ({ id, name }))}
+            currentRsvps={rsvps.map((r: any) => ({ user_id: r.user_id, status: r.status, name: r.profiles?.name ?? 'Unknown' }))}
+          />
         )}
 
         <AdminStats stats={stats} profiles={allProfiles} />

@@ -5,6 +5,7 @@ import { AdminStats } from '@/components/AdminStats';
 import { AdminTeams } from '@/components/AdminTeams';
 import { AdminFormAdjustments } from '@/components/AdminFormAdjustments';
 import { AdminCompleteGame } from '@/components/AdminCompleteGame';
+import { AdminRsvpManager } from '@/components/AdminRsvpManager';
 import type { Game, PlayerSkillProfile, Teams, FormAdjustment } from '@/types';
 
 export const dynamic = 'force-dynamic';

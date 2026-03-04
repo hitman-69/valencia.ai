@@ -15,6 +15,29 @@ interface TeamSplit {
   cost: number;
 }
 
+// Separation constraints: player A must not be on the same team as BOTH B and C
+const SEPARATION_RULES: { player: string; notBothWith: [string, string] }[] = [
+  {
+    player: 'b97218a8-07a4-4aab-92e7-5ef77fa1a21a',   // Aris Kal
+    notBothWith: [
+      '08cede96-fa0a-44d7-aa04-0cab1bc22840',          // Asimakis
+      'c158903f-d524-47e1-ac5c-c8f9d2d69676',          // Bill Sourlas
+    ],
+  },
+];
+
+function violatesSeparation(teamIds: string[]): boolean {
+  const teamSet = new Set(teamIds);
+  for (const rule of SEPARATION_RULES) {
+    if (teamSet.has(rule.player) &&
+        teamSet.has(rule.notBothWith[0]) &&
+        teamSet.has(rule.notBothWith[1])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function computeCost(a: PlayerStats[], b: PlayerStats[]): number {
   const sum = (team: PlayerStats[], attr: keyof PlayerStats) =>
     team.reduce((s, p) => s + (p[attr] as number), 0);
@@ -56,6 +79,13 @@ export function generateTeams(players: PlayerStats[]): TeamSplit {
   for (let i = 0; i < half; i++) {
     const aIdx = combos[i];
     const bIdx = indices.filter((x) => !aIdx.includes(x));
+
+    const aIds = aIdx.map((j) => players[j].user_id);
+    const bIds = bIdx.map((j) => players[j].user_id);
+
+    // Skip splits that violate separation rules
+    if (violatesSeparation(aIds) || violatesSeparation(bIds)) continue;
+
     const cost = computeCost(aIdx.map((j) => players[j]), bIdx.map((j) => players[j]));
     if (cost < bestCost) { bestCost = cost; bestA = aIdx; }
   }
